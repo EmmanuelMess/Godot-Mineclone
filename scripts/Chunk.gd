@@ -2,22 +2,47 @@ extends Node
 
 const Grass = preload("res://scripts/blocks/Grass.gd")
 const Dirt = preload("res://scripts/blocks/Dirt.gd")
+const WorldData = preload("res://scripts/WorldData.gd")
+
+var blockGrid = []
+
+func _ready():
+	# TODO create a grid of blocks
+	pass
+
 
 var playerChunkPosition = null
+var loadedChunks = {}
 
 # Called when the node enters the scene tree for the first time.
-func _process(delta: float) -> void:
-	var playerPosition = $Player.translation
-	var newPlayerChunkPosition = Vector2(int(playerPosition.x) % 16, int(playerPosition.z) % 16)
+func _process(_delta: float) -> void:
+	var playerPosition = $Player.to_global(Vector3.ZERO)
+	var newPlayerChunkPosition = Vector2(int(playerPosition.x / 16), int(playerPosition.z / 16))
 	
 	if newPlayerChunkPosition != playerChunkPosition:
+		print("New player chunk position is: ", newPlayerChunkPosition)
 		playerChunkPosition = newPlayerChunkPosition
 		
-		for x in range(playerChunkPosition.x - 1, playerChunkPosition.x + 1):
-			for z in range(playerChunkPosition.y - 1, playerChunkPosition.y + 1):
-				_createChunk(Vector2(x, z))
+		var positionsToDelete = loadedChunks.keys()
+		
+		for x in range(playerChunkPosition.x - 4, playerChunkPosition.x + 4):
+			for z in range(playerChunkPosition.y - 4, playerChunkPosition.y + 4):
+				var chunkPosition = Vector2(x, z)
+				positionsToDelete.erase(chunkPosition)
+				_createChunk(chunkPosition)
+				
+		for deletePosition in positionsToDelete:
+			_destroyChunk(deletePosition)
+			
 
-func _createChunk(chunkPosition):
+func _createChunk(chunkPosition: Vector2):
+	if loadedChunks.has(chunkPosition):
+		return
+		
+	print("Loading chunk: ", chunkPosition)
+	
+	var spatial = Spatial.new()
+	
 	var realChunkPosition = Vector3(chunkPosition.x * 16, 0, chunkPosition.y * 16)
 	
 	for x in range(realChunkPosition.x, realChunkPosition.x + 16):
@@ -28,9 +53,24 @@ func _createChunk(chunkPosition):
 				
 				if block != null:
 					block.translate(position)
-					add_child(block)
+					# TODO use greedy meshing
+					spatial.add_child(block)
+	
+	add_child(spatial)
+	
+	loadedChunks[chunkPosition] = spatial
 
-
+func _destroyChunk(chunkPosition: Vector2):
+	if not loadedChunks.has(chunkPosition):
+		return
+	
+	print("Unloading chunk: ", chunkPosition)
+	
+	var spatial: Spatial = loadedChunks[chunkPosition]
+	loadedChunks.erase(chunkPosition)
+	
+	spatial.queue_free()
+	
 const voxelVertices : Array = [
 	Vector3(0,0,0),
 	Vector3(1,0,0),
@@ -51,6 +91,15 @@ const voxelFaces : Array = [
 	[2, 1, 5, 5, 6, 2] # right face
 ]
 
+const relativePositionToCheck: Array = [
+	Vector3(0,0,-1),
+	Vector3(0,0,1),
+	Vector3(0,1,0),
+	Vector3(0,-1,0),
+	Vector3(-1,0,0), # TODO check
+	Vector3(1,0,0),
+]
+
 const voxelUVs : Array = [
 	Vector2(0,1),
 	Vector2(0,0),
@@ -61,7 +110,9 @@ const voxelUVs : Array = [
 ]
 
 func _getBlock(position: Vector3):
-	if position.y > 64 or position.y < 60:
+	var type: int = WorldData.new().blockForPosition(position)
+	
+	if type != WorldData.Block.DIRT:
 		return null
 	else:
 		var surfaceTool = SurfaceTool.new()
@@ -73,10 +124,13 @@ func _getBlock(position: Vector3):
 		surfaceTool.set_material(mat)
 		
 		for i in range(voxelFaces.size()):
-			for j in range(6):
-				surfaceTool.add_color(Grass.voxelFaceColors[i])
-				surfaceTool.add_uv(voxelUVs[j])
-				surfaceTool.add_vertex(voxelVertices[voxelFaces[i][j]])
+			var checkToCreateFacePosition = position + relativePositionToCheck[i]
+			var checkToCreateFace: int = WorldData.new().blockForPosition(checkToCreateFacePosition)
+			if checkToCreateFace == WorldData.Block.AIR:
+				for j in range(6):
+					surfaceTool.add_color(Grass.voxelFaceColors[i])
+					surfaceTool.add_uv(voxelUVs[j])
+					surfaceTool.add_vertex(voxelVertices[voxelFaces[i][j]])
 
 		surfaceTool.generate_normals()
 
@@ -92,6 +146,7 @@ func _getBlock(position: Vector3):
 		
 		var staticBody: StaticBody = StaticBody.new()
 		staticBody.scale = Vector3(0.5, 0.5, 0.5)
+		staticBody.collision_mask = 2
 		staticBody.add_child(meshInstance)
 		staticBody.add_child(collisionShape)
 		
