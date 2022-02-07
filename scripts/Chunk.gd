@@ -14,7 +14,6 @@ func _ready():
 var playerChunkPosition = null
 var loadedChunks = {}
 
-# Called when the node enters the scene tree for the first time.
 func _process(_delta: float) -> void:
 	var playerPosition = $Player.to_global(Vector3.ZERO)
 	var newPlayerChunkPosition = Vector2(int(playerPosition.x / 16), int(playerPosition.z / 16))
@@ -151,5 +150,5 @@ func _getBlock(position: Vector3):
 		staticBody.add_child(collisionShape)
 		
 
-		return staticBody
+		return meshInstance
 
