@@ -150,5 +150,5 @@ func _getBlock(position: Vector3):
 		staticBody.add_child(collisionShape)
 		
 
-		return meshInstance
+		return staticBody
 
